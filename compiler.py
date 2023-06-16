@@ -1,4 +1,5 @@
 import configparser
+import logging
 import os.path
 
 import pandas as pd
@@ -73,6 +74,7 @@ def get_command_to_code_dict(df: pd.DataFrame):
             command_to_code[code_name] = {
                 'code_val': code_val_hex,
                 'param_num': len(params),
+                'length': len(params) + 1,
                 'params': params,
             }
     return command_to_code
@@ -96,16 +98,123 @@ def parse_command_definition(command: str):
 
 def get_human_code(path: str):
     """
-    Read in the file named path and return the human code as a string array separated by line
+    Read in the file named path and return the human code as a string array separated by line.
+    Also clears out comments and empty lines.
     :param path:
     :return:
     """
     with open(path, 'r') as f:
         code = f.read()
-    return code.split('\n')
+    code = code.replace('\t', '    ')
+    code_list = code.split('\n')
+
+    # Iterate over lines and remove comments
+    for index, line in enumerate(code_list):
+        code_list[index] = ''
+        for character in line:
+            if character != ';':
+                code_list[index] += character
+            else:
+                break
+
+    # Remove leading and trailing whitespaces
+    for index, line in enumerate(code_list):
+        code_list[index] = line.strip()
+
+    # Remove empty lines
+    code_list = list(filter(None, code_list))
+
+    return code_list
 
 
-def create_hex_code(human_code: list[str], commands_dict: dict):
+def create_associated_storage(human_code: list[str], commands_dict: dict) -> tuple[dict, dict]:
+    """
+    Eine Zeile kann mit einer Adresse beginnen. Eine Adresse ist ein Name mit einem einen
+    Doppelpunkt am Ende. Der Doppelpunkt gehört nicht zum Namen, sondern dient nur zur
+    Erkennung.
+    Eine Adresse steht entweder
+    • für eine Sprungzielmarke, wenn ein Befehl folgt (die Adresse ist die Adresse des Befehls),
+    • einer Variablendefinition, wenn der Pseudobefehl DB oder RESB folgt (die Adresse der
+    Variablen),
+    • eine Konstantendefinition, wenn der Pseudobefehl EQU folgt (keine Adresse).
+    """
+    # Find all lines that start with a address
+    jumps = dict()
+    variables = dict()
+    constants = dict()
+    for index, line in enumerate(human_code):
+        line_sep = line.split(' ')
+        is_label = False
+        label = None
+        for token in line_sep:
+            if token.endswith(':'):
+                is_label = True
+                label = token[:-1]
+                break
+        if is_label:
+            line_without_label = line.replace(label + ':', '').strip()
+            if 'DB' in line_without_label:
+                variable_name = label  # 'counter'
+                variable_value = line_without_label.replace('DB', '').strip()  # '0'
+                variables[variable_name] = {'value': variable_value, 'type': 'DB'}
+            elif 'RESB' in line_without_label:
+                variable_name = label  # 'counter'
+                variable_value = line_without_label.replace('RESB', '').strip()  # '0'
+                variables[variable_name] = {'number': variable_value, 'type': 'RESB'}
+            elif 'EQU' in line_without_label:
+                constant_name = label  # 'counter'
+                constant_value = line_without_label.replace('EQU', '').strip()  # '0'
+                constants[constant_name] = {'number': constant_value, 'type': 'EQU'}
+            else:
+                # Check if label if followed by a known command, else throw error
+                if parse_human_command(line_without_label, commands_dict) is not None:
+                    constants[label] = {'address': index, 'type': 'JMP'}
+                else:
+                    raise Exception(f'Label {label} not used as variable, constant or address.')
+    return constants, variables
+
+
+def clear_addresses(code: list[str]) -> list[str]:
+    """
+    Remove all  addresses from the code
+    """
+    clear_code = []
+    for index, line in enumerate(code):
+        line_sep = line.split(' ')
+        new_line = ''
+        for token in line_sep:
+            if not token.endswith(':'):
+                # If not an address, add to new line
+                new_line = new_line + ' ' + token
+        new_line = new_line.strip()
+        if new_line.startswith('DB') or new_line.startswith('RESB') or new_line.startswith('EQU'):
+            break
+        else:
+            clear_code.append(new_line.strip())
+    return clear_code
+
+
+def create_address_space(variables: dict, human_code: list[str], commands_dict: dict):
+    """
+    Counts the length of the code and defines the address needed for the variables
+    """
+    counter = 0
+    extended_variables = variables.copy()
+    for line in human_code:
+        human_command = parse_human_command(line, commands_dict)
+        counter += commands_dict[human_command.get('command_name')].get('length')
+    for variable_name in variables.keys():
+        if variables.get(variable_name).get('type') == 'DB':
+            counter += 1
+            extended_variables[variable_name]['address'] = counter
+        elif variables.get(variable_name).get('type') == 'RESB':
+            extended_variables[variable_name]['address_start'] = counter
+            counter += int(variables.get(variable_name).get('number'))
+            extended_variables[variable_name]['address_end'] = counter
+    return extended_variables
+
+
+def create_hex_code(human_code: list[str], commands_dict: dict, constants: dict, variables: dict):
     """
     Create a hex code from the human code using command_to_code dict
     :param human_code:
@@ -116,38 +225,59 @@ def create_hex_code(human_code: list[str], commands_dict: dict):
     for line in human_code:
         if line == '':
             continue
-        command_parsed = parse_human_command(line, commands_dict)
+        command_parsed = parse_human_command(line, commands_dict, constants, variables)
+        if command_parsed is None:
+            raise Exception(
+                f'Command "{line}" not found in code defintion. Please check your code and definition in Google Sheets')
         command = command_parsed.get('command_name')
         param = command_parsed.get('param')
         code_hex = commands_dict[command].get('code_val')
 
         if code_hex is not None:
             hex_code.append(code_hex)
-            if param != '':
+            if param is not None:
                 hex_code.append(param)
 
     # Lambda to convert the hex codes from ['f', '0', '4', '5', 'd', '02'] to ['0f', '00', '04', '05', '0d', '02']
-    hex_code_formatted = lambda lst: [hex(int(x, 16))[2:].zfill(2) for x in lst]
+    hex_code_formatted = lambda lst: [hex(int(str(x), 16))[2:].zfill(2) for x in lst]
     return hex_code_formatted(hex_code)
 
 
-def parse_human_command(human_command: str, commands_dict: dict):
+def parse_human_command(human_command: str, commands_dict: dict, constants: dict = None, variables: dict = None):
     """
     Parse a command of type NAME <value1> <value2> ... <paramN>, e.g. JMP #01 to a dict.
     Parameters:
     human_command: dict
     """
-    for command in commands_dict.keys():
+    # YOU NEED TO CHECK FOR LOAD A and LOAD B first, because the command LOAD is a substring of LOAD A or LOAD B
+    # Solution sort the commands by length and check for the longest first
+    for command in sorted(commands_dict.keys(), key=len, reverse=True):
         if human_command.startswith(command):
             command_name = command
             code_val = commands_dict[command].get('code_val')
-            param = human_command.replace(command, '')
+            param_raw = human_command.replace(command, '')
+            if param_raw == '':
+                param_raw = None
+            if param_raw is not None:
+                if param_raw.isnumeric():
+                    param = param_raw
+                elif variables is not None and param_raw in variables.keys():
+                    param = variables.get(param_raw).get('address')
+                elif constants is not None and param_raw in constants.keys():
+                    param = constants.get(param_raw).get('number')
+                else:
+                    if constants is not None or variables is not None:
+                        raise Exception(
+                            f'Parameter "{param_raw}" for command {command_name} is not numeric or a defined variable in {variables} or constant in {constants}')
+                    else:
+                        param = param_raw
+            else: # No parameter
+                param = None
             return {
                 'command_name': command_name,
                 'code_val': code_val,
                 'param': param,
             }
-    return None
 
 
 def parse_to_file(hex_code: list[str], path: str, seperator: str = '\n') -> None:
@@ -179,13 +309,30 @@ def parse_to_program(hex_code: list[str], path: str) -> None:
 
 
 if __name__ == '__main__':
+    # Get code definitions from spreadsheet
     values = read_code_df(SPREADSHEET_ID, CODE_RANGE)
-    print(values)
+    # print(values)
     commands_dict = get_command_to_code_dict(values)
     print(commands_dict)
-    code = get_human_code(CODE_FILE_NAME)
-    print(code)
-    hex_code = create_hex_code(code, commands_dict)
+
+    # Read in raw human code with comments and empty lines removed
+    human_code = get_human_code(CODE_FILE_NAME)
+    print(human_code)
+
+    # Create associated storage (parse addresses, variables and constants). First iteration of assembler
+    constants, variables = create_associated_storage(human_code, commands_dict)
+    print(f'Constants: {constants}')
+    print(f'Variables: {variables}')
+
+    # Clear addresses from code
+    human_code = clear_addresses(human_code)
+    print(human_code)
+
+    # Create address space for variables
+    variables = create_address_space(variables, human_code, commands_dict)
+    print(f'Extended Variables: {variables}')
+
+    hex_code = create_hex_code(human_code, commands_dict, constants, variables)
     print(hex_code)
     parse_to_file(hex_code, 'hex_code.txt')
     parse_to_program(hex_code, 'Program')
