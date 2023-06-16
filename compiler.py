@@ -313,11 +313,11 @@ if __name__ == '__main__':
     values = read_code_df(SPREADSHEET_ID, CODE_RANGE)
     # print(values)
     commands_dict = get_command_to_code_dict(values)
-    print(commands_dict)
+    print(f'Commands Definition from Sheet: {commands_dict}')
 
     # Read in raw human code with comments and empty lines removed
     human_code = get_human_code(CODE_FILE_NAME)
-    print(human_code)
+    print(f'Human Code: {human_code}')
 
     # Create associated storage (parse addresses, variables and constants). First iteration of assembler
     constants, variables = create_associated_storage(human_code, commands_dict)
@@ -326,13 +326,13 @@ if __name__ == '__main__':
 
     # Clear addresses from code
     human_code = clear_addresses(human_code)
-    print(human_code)
+    print(f'Human Code without addresses: {human_code}')
 
     # Create address space for variables
     variables = create_address_space(variables, human_code, commands_dict)
     print(f'Extended Variables: {variables}')
 
     hex_code = create_hex_code(human_code, commands_dict, constants, variables)
-    print(hex_code)
+    print(f'Final Hex Code: {hex_code}')
     parse_to_file(hex_code, 'hex_code.txt')
     parse_to_program(hex_code, 'Program')
