@@ -104,6 +104,7 @@ def get_human_code(path: str):
         code = f.read()
     return code.split('\n')
 
+
 def create_hex_code(human_code: list[str], commands_dict: dict):
     """
     Create a hex code from the human code using command_to_code dict
@@ -122,9 +123,13 @@ def create_hex_code(human_code: list[str], commands_dict: dict):
 
         if code_hex is not None:
             hex_code.append(code_hex)
-            if param is not None:
+            if param != '':
                 hex_code.append(param)
-    return hex_code
+
+    # Lambda to convert the hex codes from ['f', '0', '4', '5', 'd', '02'] to ['0f', '00', '04', '05', '0d', '02']
+    hex_code_formatted = lambda lst: [hex(int(x, 16))[2:].zfill(2) for x in lst]
+    return hex_code_formatted(hex_code)
+
 
 def parse_human_command(human_command: str, commands_dict: dict):
     """
@@ -145,6 +150,34 @@ def parse_human_command(human_command: str, commands_dict: dict):
     return None
 
 
+def parse_to_file(hex_code: list[str], path: str, seperator: str = '\n') -> None:
+    """
+    Parse the hex code to a file
+    :param hex_code: list of hex codes
+    :param path: path to file
+    """
+    with open(path, 'w') as f:
+        f.write('\n'.join(hex_code))
+
+
+def parse_to_program(hex_code: list[str], path: str) -> None:
+    """
+    Parse the hex code to a file useable by LogisimEvolution
+    """
+    TEMPLATE_FILE_NAME = 'ProgramTemplate.txt'
+
+    with open(TEMPLATE_FILE_NAME, 'r') as f:
+        template = f.read()
+
+    program = template
+    for hex in hex_code:
+        program = program.replace('<placeholder>', hex, 1)
+    program = program.replace('<placeholder>', '00')
+
+    with open(path, 'w+') as f:
+        f.write(program)
+
+
 if __name__ == '__main__':
     values = read_code_df(SPREADSHEET_ID, CODE_RANGE)
     print(values)
@@ -153,3 +186,6 @@ if __name__ == '__main__':
     code = get_human_code(CODE_FILE_NAME)
     print(code)
     hex_code = create_hex_code(code, commands_dict)
+    print(hex_code)
+    parse_to_file(hex_code, 'hex_code.txt')
+    parse_to_program(hex_code, 'Program')
