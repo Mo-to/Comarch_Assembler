@@ -15,7 +15,7 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 config = configparser.ConfigParser()
 config.read('config.ini')
 SPREADSHEET_ID = config['DEFAULT']['SpreadsheetId']
-CODE_RANGE = 'Code!A4:X35'
+CODE_RANGE = 'A4:AF35'
 CODE_FILE_NAME = 'code.txt'
 
 
@@ -59,12 +59,14 @@ def get_command_to_code_dict(df: pd.DataFrame):
     """
     Return a dict of command to 5-bit code
     """
+    COMMAND_ROW = 8
+
     command_to_code = {}
     for row in df.itertuples():
-        if row[6] != '':
+        if row[COMMAND_ROW] != '':
             code_val_dec = int('000' + str(row[1]) + str(row[2]) + str(row[3]) + str(row[4]) + str(row[5]), 2)
             code_val_hex = f'{code_val_dec:x}'
-            param_command = parse_param_command(row[6])  # Returns a dict with keys: command_name, params
+            param_command = parse_command_definition(row[COMMAND_ROW])  # Returns a dict with keys: command_name, params
             code_name = param_command.get('command_name')
             params = param_command.get('params')
 
@@ -76,7 +78,7 @@ def get_command_to_code_dict(df: pd.DataFrame):
     return command_to_code
 
 
-def parse_param_command(command: str):
+def parse_command_definition(command: str):
     """
     Parse a command of type NAME <param1> <param2> ... <paramN>, e.g. JMP <addr> to a dict with keys:
     command_name: str
@@ -102,32 +104,52 @@ def get_human_code(path: str):
         code = f.read()
     return code.split('\n')
 
-def create_hex_code(human_code: list[str], command_to_code: dict):
+def create_hex_code(human_code: list[str], commands_dict: dict):
     """
     Create a hex code from the human code using command_to_code dict
     :param human_code:
-    :param command_to_code:
+    :param commands_dict:
     :return:
     """
     hex_code = []
     for line in human_code:
         if line == '':
             continue
-        command_parsed = parse_param_command(line)
+        command_parsed = parse_human_command(line, commands_dict)
         command = command_parsed.get('command_name')
-        params = command_parsed.get('params')
-        code_hex = command_to_code[command].get('code_val')
+        param = command_parsed.get('param')
+        code_hex = commands_dict[command].get('code_val')
 
-        for param in params:
-            hex_code.append(param)
+        if code_hex is not None:
+            hex_code.append(code_hex)
+            if param is not None:
+                hex_code.append(param)
     return hex_code
+
+def parse_human_command(human_command: str, commands_dict: dict):
+    """
+    Parse a command of type NAME <value1> <value2> ... <paramN>, e.g. JMP #01 to a dict.
+    Parameters:
+    human_command: dict
+    """
+    for command in commands_dict.keys():
+        if human_command.startswith(command):
+            command_name = command
+            code_val = commands_dict[command].get('code_val')
+            param = human_command.replace(command, '')
+            return {
+                'command_name': command_name,
+                'code_val': code_val,
+                'param': param,
+            }
+    return None
 
 
 if __name__ == '__main__':
     values = read_code_df(SPREADSHEET_ID, CODE_RANGE)
     print(values)
-    command_to_code = get_command_to_code_dict(values)
-    print(command_to_code)
+    commands_dict = get_command_to_code_dict(values)
+    print(commands_dict)
     code = get_human_code(CODE_FILE_NAME)
     print(code)
-    hex_code = create_hex_code(code, command_to_code)
+    hex_code = create_hex_code(code, commands_dict)
