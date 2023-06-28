@@ -1,6 +1,7 @@
 import configparser
 import logging
 import os.path
+import sys
 
 import pandas as pd
 from google.auth.transport.requests import Request
@@ -12,17 +13,23 @@ from googleapiclient.errors import HttpError
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 
-# The ID and range of a sample spreadsheet.
 config = configparser.ConfigParser()
 config.read('config.ini')
 SPREADSHEET_ID = config['DEFAULT']['SpreadsheetId']
-CODE_RANGE = 'A4:AF35'
-CODE_FILE_NAME = 'code.txt'
+CODE_RANGE = config['DEFAULT']['CodeRange']
+PROGRAM_TEMPLATE_FILE_PATH = config['DEFAULT']['ProgramTemplate']
+if len(sys.argv) == 4:
+    INPUT_CODE_PATH, OUTPUT_CODE_PATH, PROGRAM_FILE_PATH = sys.argv[1], sys.argv[2], sys.argv[3]
+else:
+    INPUT_CODE_PATH, OUTPUT_CODE_PATH, PROGRAM_FILE_PATH = config['DEFAULT']['InputFile'], \
+        config['DEFAULT']['OutputFile'], \
+        config['DEFAULT']['ProgramOutput']
 
 
 def read_code_df(spreadsheet_id: str, sheets_range: str):
     """
     Return values in a range of a spreadsheet as pandas df
+    Triggers a login screen in browser if no token.json is present
     """
     creds = None
     # The file token.json stores the user's access and refresh tokens, and is
@@ -46,11 +53,8 @@ def read_code_df(spreadsheet_id: str, sheets_range: str):
         service = build('sheets', 'v4', credentials=creds)
 
         # Call the Sheets API
-        sheet = service.spreadsheets()
-        result = sheet.values().get(spreadsheetId=spreadsheet_id,
-                                    range=sheets_range).execute()
-        values = result.get('values', [])
-
+        values = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id,
+                                                     range=sheets_range).execute().get('values', [])
         return pd.DataFrame(values)
     except HttpError as err:
         print(err)
@@ -60,23 +64,22 @@ def get_command_to_code_dict(df: pd.DataFrame):
     """
     Return a dict of command to 5-bit code
     """
-    COMMAND_ROW = 8
+    COMMAND_COL = 7
 
     command_to_code = {}
-    for row in df.itertuples():
-        if row[COMMAND_ROW] != '':
-            code_val_dec = int('000' + str(row[1]) + str(row[2]) + str(row[3]) + str(row[4]) + str(row[5]), 2)
-            code_val_hex = f'{code_val_dec:x}'
-            param_command = parse_command_definition(row[COMMAND_ROW])  # Returns a dict with keys: command_name, params
-            code_name = param_command.get('command_name')
-            params = param_command.get('params')
+    for row in df[df[COMMAND_COL] != ''].itertuples():
+        code_val_dec = int('000' + str(row[1]) + str(row[2]) + str(row[3]) + str(row[4]) + str(row[5]), 2)
+        code_val_hex = f'{code_val_dec:x}'
+        param_command = parse_command_definition(row[COMMAND_COL+1])  # Returns a dict with keys: command_name, params
+        code_name = param_command.get('command_name')
+        params = param_command.get('params')
 
-            command_to_code[code_name] = {
-                'code_val': code_val_hex,
-                'param_num': len(params),
-                'length': len(params) + 1,
-                'params': params,
-            }
+        command_to_code[code_name] = {
+            'code_val': code_val_hex,
+            'param_num': len(params),
+            'length': len(params) + 1,
+            'params': params,
+        }
     return command_to_code
 
 
@@ -139,7 +142,6 @@ def create_associated_storage(human_code: list[str], commands_dict: dict) -> tup
     • eine Konstantendefinition, wenn der Pseudobefehl EQU folgt (keine Adresse).
     """
     # Find all lines that start with a address
-    jumps = dict()
     variables = dict()
     constants = dict()
     for index, line in enumerate(human_code):
@@ -271,7 +273,7 @@ def parse_human_command(human_command: str, commands_dict: dict, constants: dict
                             f'Parameter "{param_raw}" for command {command_name} is not numeric or a defined variable in {variables} or constant in {constants}')
                     else:
                         param = param_raw
-            else: # No parameter
+            else:  # No parameter
                 param = None
             return {
                 'command_name': command_name,
@@ -287,16 +289,14 @@ def parse_to_file(hex_code: list[str], path: str, seperator: str = '\n') -> None
     :param path: path to file
     """
     with open(path, 'w') as f:
-        f.write('\n'.join(hex_code))
+        f.write(seperator.join(hex_code))
 
 
 def parse_to_program(hex_code: list[str], path: str) -> None:
     """
     Parse the hex code to a file useable by LogisimEvolution
     """
-    TEMPLATE_FILE_NAME = 'ProgramTemplate.txt'
-
-    with open(TEMPLATE_FILE_NAME, 'r') as f:
+    with open(PROGRAM_TEMPLATE_FILE_PATH, 'r') as f:
         template = f.read()
 
     program = template
@@ -311,28 +311,27 @@ def parse_to_program(hex_code: list[str], path: str) -> None:
 if __name__ == '__main__':
     # Get code definitions from spreadsheet
     values = read_code_df(SPREADSHEET_ID, CODE_RANGE)
-    # print(values)
     commands_dict = get_command_to_code_dict(values)
-    print(f'Commands Definition from Sheet: {commands_dict}')
+    logging.info(f'Command definition from gsheet: {commands_dict}')
 
     # Read in raw human code with comments and empty lines removed
-    human_code = get_human_code(CODE_FILE_NAME)
-    print(f'Human Code: {human_code}')
+    human_code = get_human_code(INPUT_CODE_PATH)
+    logging.info(f'Human code: {human_code}')
 
     # Create associated storage (parse addresses, variables and constants). First iteration of assembler
     constants, variables = create_associated_storage(human_code, commands_dict)
-    print(f'Constants: {constants}')
-    print(f'Variables: {variables}')
+    logging.debug(f'Constants: {constants}')
+    logging.debug(f'Variables: {variables}')
 
     # Clear addresses from code
     human_code = clear_addresses(human_code)
-    print(f'Human Code without addresses: {human_code}')
+    logging.debug(f'Human code without addresses: {human_code}')
 
     # Create address space for variables
     variables = create_address_space(variables, human_code, commands_dict)
-    print(f'Extended Variables: {variables}')
+    logging.debug(f'Extended variables: {variables}')
 
     hex_code = create_hex_code(human_code, commands_dict, constants, variables)
-    print(f'Final Hex Code: {hex_code}')
-    parse_to_file(hex_code, 'hex_code.txt')
-    parse_to_program(hex_code, 'Program')
+    logging.info(f'Final hex-code: {hex_code}')
+    parse_to_file(hex_code, OUTPUT_CODE_PATH)
+    parse_to_program(hex_code, PROGRAM_FILE_PATH)
