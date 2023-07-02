@@ -261,12 +261,15 @@ def parse_human_command(human_command: str, commands_dict: dict, constants: dict
             if param_raw == '':
                 param_raw = None
             if param_raw is not None:
-                if param_raw.isnumeric():
+                if param_raw.isnumeric(): # HAS TO CHECK IF PARAM IS HEX BYTE ? && CHECK VAR AND CONST FOR ADD, VAL, NUMBER. DIFFERENCE VAL AND NUMBER?
                     param = param_raw
                 elif variables is not None and param_raw in variables.keys():
                     param = variables.get(param_raw).get('address')
                 elif constants is not None and param_raw in constants.keys():
-                    param = constants.get(param_raw).get('number')
+                    if 'address' in constants.get(param_raw).keys():
+                        param = constants.get(param_raw).get('address')
+                    else:
+                        param = constants.get(param_raw).get('number')
                 else:
                     if constants is not None or variables is not None:
                         raise Exception(

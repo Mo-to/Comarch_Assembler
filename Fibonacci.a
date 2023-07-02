@@ -1,0 +1,18 @@
+            LOAD A, 01
+            LOAD B, 00
+            OUTPUT
+            STORE bufa
+      loop: ADD A,B
+            OUTPUT
+            STORE bufb
+            LOAD B, end
+            JNE continue
+            HALT
+  continue: LOAD bufa
+            MOV A,B
+            LOAD bufb
+            JMP loop
+
+       end: EQU E9
+      bufa: DB 0
+      bufb: DB 0
