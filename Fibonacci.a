@@ -1,19 +1,19 @@
-            LOAD A, 01
-            LOAD B, 00
-            OUTPUT
-            STORE bufa
-      loop: ADD A,B
-            OUTPUT
-            STORE bufb
-            LOAD B, end
-            JNE continue
-            HALT
-  continue: LOAD bufa
-            MOV A,B
-            LOAD bufb
-            JMP loop
+            LOAD A, 01         ; load 1 into A
+            LOAD B, 00         ; load 0 into B
+            OUTPUT             ; output to store in bufa
+            STORE bufa         ; store in bufa
+      loop: ADD A,B            ; add A and B
+            OUTPUT             ; output to store in bufb
+            STORE bufb         ; store in bufb
+            LOAD B, end        ; load constant end into B
+            JNE continue       ; if B != end, continue
+            HALT               ; Halt
+  continue: LOAD bufa          ; load bufa
+            MOV A,B            ; move A into B
+            LOAD bufb          ; load bufb
+            JMP loop           ; jump to loop (continue adding)
 
-       end: EQU E9
-      bufa: DB 0
-      test: RESB 8              ; add space for demonstration of RESB
-      bufb: DB 0
+       end: EQU E9             ; end is E9
+      bufa: DB 0               ; initialize bufa with value 0
+      test: RESB 8             ; add space for demonstration of RESB
+      bufb: DB 0               ; initialize bufb with value 0
