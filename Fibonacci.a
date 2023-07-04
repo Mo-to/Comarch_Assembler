@@ -15,4 +15,5 @@
 
        end: EQU E9
       bufa: DB 0
+      test: RESB 8              ; add space for demonstration of RESB
       bufb: DB 0

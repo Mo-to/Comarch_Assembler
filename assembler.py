@@ -207,12 +207,12 @@ def create_address_space(variables: dict, human_code: list[str], commands_dict: 
         counter += commands_dict[human_command.get('command_name')].get('length')
     for variable_name in variables.keys():
         if variables.get(variable_name).get('type') == 'DB':
+            extended_variables[variable_name]['address'] = hex(counter)
             counter += 1
-            extended_variables[variable_name]['address'] = counter
         elif variables.get(variable_name).get('type') == 'RESB':
-            extended_variables[variable_name]['address_start'] = counter
+            extended_variables[variable_name]['address_start'] = hex(counter)
             counter += int(variables.get(variable_name).get('number'))
-            extended_variables[variable_name]['address_end'] = counter
+            extended_variables[variable_name]['address_end'] = hex(counter)
     return extended_variables
 
 
