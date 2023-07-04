@@ -2,6 +2,8 @@
 # Info für Dr. Förster
 - Das Programm befindet sich in einem öffentlichen Repository auf GitHub, folgen Sie der Installationsanleitung um das Repository zu clonen.
 - Das Programm benötigt eine Datei "credentials.json" um auf die Google Sheets API zugreifen zu können. Diese Datei ist nicht im Repository enthalten, da sie sensible Daten enthält. Sie ist Teil dieser zip-Datei. Fügen Sie sie nach dem clonen des Repositories dem root-Verzeichnis hinzu.
+- Das Programm nutzt die Google Sheets API um die Maschinencodes aus einer Google Tabelle zu lesen. Die genutzte Tabelle wurde für den Computer aus Labor 4 entwickelt, ist öffentlich zugänglich und kann hier eingesehen werden: https://docs.google.com/spreadsheets/d/1s8AJut2VmPQW_sHFVFF5YNUYHAidIszT0DfoOAU7YqU/edit?usp=sharing
+- Das Beispielprogramm heißt "Fibonacci.a" und produziert den Maschinencode "Fibonacci_code.hex" und das Programm "Fibonacci_program.hex" zum Einlesen in LogiSimEvolution.
 
 # Requirements
 * Python >3.6 (tested on 3.11)
