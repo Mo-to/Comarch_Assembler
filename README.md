@@ -1,4 +1,8 @@
 # COMARCH Assembler
+# Info für Dr. Förster
+- Das Programm befindet sich in einem öffentlichen Repository auf GitHub, folgen Sie der Installationsanleitung um das Repository zu clonen.
+- Das Programm benötigt eine Datei "credentials.json" um auf die Google Sheets API zugreifen zu können. Diese Datei ist nicht im Repository enthalten, da sie sensible Daten enthält. Sie ist Teil dieser zip-Datei. Fügen Sie sie nach dem clonen des Repositories dem root-Verzeichnis hinzu.
+
 # Requirements
 * Python >3.6 (tested on 3.11)
 
